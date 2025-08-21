@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sistema de Cadastro de Notas Fiscais</title>
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root{--accent:#1f6feb}
+    body{background:#f4f7fb;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    .card{border-radius:12px;box-shadow:0 6px 18px rgba(28,39,51,0.06)}
+    .brand{color:var(--accent);font-weight:700}
+    .login-screen{max-width:420px;margin:6vh auto}
+    .small-muted{font-size:.85rem;color:#6b7280}
+    .table-wrap{max-height:56vh;overflow:auto}
+    .uppercase{text-transform:uppercase}
+    .form-hidden{display:none}
+    .pointer{cursor:pointer}
+    /* responsive tweaks */
+    @media (max-width:767px){.login-screen{margin:3vh 1rem}}
+  </style>
+</head>
+<body>
+  <!-- Login Page -->
+  <div id="loginPage" class="login-screen">
+    <div class="card p-4">
+      <h4 class="mb-2">Sistema de Notas Fiscais</h4>
+      <p class="small-muted">Insira a chave de acesso para continuar</p>
+      <div class="mb-3">
+        <input id="accessKey" type="password" class="form-control" placeholder="Chave de acesso" />
+      </div>
+      <div class="d-grid gap-2">
+        <button id="btnLogin" class="btn btn-primary">Entrar</button>
+      </div>
+      <p class="mt-3 small-muted">Chave fixa: <code>padrão</code></p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="container py-4" style="display:none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h3 class="mb-0">Notas Fiscais</h3>
+        <small class="small-muted">Gerencie notas, pesquise, edite e exporte em PDF</small>
+      </div>
+      <div>
+        <button id="btnNew" class="btn btn-outline-primary me-2">Nova Nota</button>
+        <button id="btnExportPDF" class="btn btn-success">Exportar PDF</button>
+        <button id="btnLogout" class="btn btn-link text-danger">Sair</button>
+      </div>
+    </div>
+
+    <div class="card p-3 mb-3">
+      <div class="row g-2 align-items-center">
+        <div class="col-md-4">
+          <input id="searchDanfe" class="form-control" placeholder="Buscar por número DANFE" />
+        </div>
+        <div class="col-md-3">
+          <input id="searchDate" class="form-control" placeholder="Buscar por data (DD/MM/AAAA)" />
+        </div>
+        <div class="col-md-3">
+          <select id="sortSelect" class="form-select">
+            <option value="">Ordenar</option>
+            <option value="company_asc">Empresa A → Z</option>
+            <option value="company_desc">Empresa Z → A</option>
+            <option value="date_new">Data mais recente</option>
+            <option value="date_old">Data mais antiga</option>
+          </select>
+        </div>
+        <div class="col-md-2 text-end small-muted">Total: <span id="totalCount">0</span></div>
+      </div>
+    </div>
+
+    <div class="card p-3 mb-3">
+      <div class="table-wrap">
+        <table id="notesTable" class="table table-hover table-striped">
+          <thead>
+            <tr>
+              <th style="width:110px">Número DANFE</th>
+              <th>Empresa</th>
+              <th>Data</th>
+              <th>Valor</th>
+              <th>Descrição</th>
+              <th style="width:150px">Ações</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Form Modal (inline implementation) -->
+    <div id="noteFormCard" class="card p-3 mb-3 form-hidden">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 id="formTitle" class="mb-0">Nova Nota</h5>
+        <button id="btnCloseForm" class="btn btn-sm btn-outline-secondary">Fechar</button>
+      </div>
+
+      <form id="noteForm" class="row g-3">
+        <input type="hidden" id="noteId" />
+        <div class="col-md-3">
+          <label class="form-label">DANFE (opcional)</label>
+          <input id="danfe" class="form-control" placeholder="Se vazio, será gerado" maxlength="20" />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">CNPJ</label>
+          <input id="cnpj" class="form-control" placeholder="00.000.000/0000-00" maxlength="18" />
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Nome da Empresa</label>
+          <input id="company" class="form-control uppercase" placeholder="NOME DA EMPRESA" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Data de Emissão</label>
+          <input id="date" class="form-control" placeholder="DD/MM/AAAA" maxlength="10" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Valor Total (R$)</label>
+          <input id="value" class="form-control" placeholder="000,00" maxlength="12" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Descrição do Produto</label>
+          <input id="desc" class="form-control" placeholder="Descrição curta" />
+        </div>
+
+        <div class="col-12 text-end">
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <script>
+    // ---------- Utilitários ----------
+    const ACCESS_KEY = '074708';
+
+    const $ = id => document.getElementById(id);
+
+    function formatCNPJ(v){
+      const nums = v.replace(/\D/g,'').slice(0,14);
+      return nums.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') || nums
+        .replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, (m,p1,p2,p3,p4)=> p1 + (p2?'.'+p2:'') + (p3?'.'+p3:'') + (p4?'/'+p4:'') )
+    }
+
+    function maskCNPJInput(ev){ ev.target.value = formatCNPJ(ev.target.value) }
+
+    function maskDateInput(ev){
+      let v = ev.target.value.replace(/\D/g,'').slice(0,8);
+      if(v.length>=5) v=v.replace(/(\d{2})(\d{2})(\d{4})/,'$1/$2/$3');
+      else if(v.length>=3) v=v.replace(/(\d{2})(\d{1,2})/,'$1/$2');
+      ev.target.value=v;
+    }
+
+    function maskMoneyInput(ev){
+      let v = ev.target.value.replace(/[^\d]/g,'');
+      if(!v) {ev.target.value=''; return}
+      while(v.length<3) v = '0' + v;
+      const cents = v.slice(-2);
+      const int = v.slice(0, -2).replace(/^0+/,'') || '0';
+      const withSep = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      ev.target.value = withSep + ',' + cents;
+    }
+
+    function genRandomDanfe(){ return Math.floor(1000 + Math.random()*9000).toString() }
+
+    function saveNotes(notes){ localStorage.setItem('notas_db_v1', JSON.stringify(notes)) }
+    function loadNotes(){ return JSON.parse(localStorage.getItem('notas_db_v1')||'[]') }
+
+    // ---------- UI Logic ----------
+    const loginPage = $('loginPage'), app = $('app');
+    const btnLogin = $('btnLogin'), btnLogout = $('btnLogout');
+
+    btnLogin.addEventListener('click', ()=>{
+      const val = $('accessKey').value.trim();
+      if(val === ACCESS_KEY){ loginPage.style.display='none'; app.style.display='block'; renderTable(); }
+      else alert('Chave inválida');
+    });
+    btnLogout.addEventListener('click', ()=>{ if(confirm('Deseja sair?')){ app.style.display='none'; loginPage.style.display='block'; } });
+
+    // Form toggles
+    const btnNew = $('btnNew'), noteFormCard = $('noteFormCard'), btnCloseForm = $('btnCloseForm'), noteForm = $('noteForm');
+    btnNew.addEventListener('click', ()=> openForm());
+    btnCloseForm.addEventListener('click', ()=> closeForm());
+
+    function openForm(note=null){
+      noteFormCard.classList.remove('form-hidden');
+      if(note){ $('formTitle').innerText='Editar Nota'; $('noteId').value=note.id; $('danfe').value=note.danfe; $('cnpj').value=note.cnpj; $('company').value=note.company; $('date').value=note.date; $('value').value=note.value; $('desc').value=note.desc; }
+      else{ $('formTitle').innerText='Nova Nota'; noteForm.reset(); $('noteId').value=''; }
+    }
+    function closeForm(){ noteFormCard.classList.add('form-hidden'); noteForm.reset(); }
+
+    // Masks
+    $('cnpj').addEventListener('input', maskCNPJInput);
+    $('date').addEventListener('input', maskDateInput);
+    $('value').addEventListener('input', maskMoneyInput);
+    // uppercase company
+    $('company').addEventListener('input', (e)=> e.target.value = e.target.value.toUpperCase());
+
+    // Submit form
+    noteForm.addEventListener('submit', (ev)=>{
+      ev.preventDefault();
+      const id = $('noteId').value || Date.now().toString();
+      let danfe = $('danfe').value.trim();
+      if(!danfe) danfe = genRandomDanfe();
+      const cnpj = $('cnpj').value.trim();
+      const company = $('company').value.trim().toUpperCase();
+      const date = $('date').value.trim();
+      const value = $('value').value.trim();
+      const desc = $('desc').value.trim();
+
+      // Basic validation
+      if(!company || !date || !value){ alert('Preencha pelo menos Empresa, Data e Valor'); return }
+      // validate date pattern
+      if(!/^\d{2}\/\d{2}\/\d{4}$/.test(date)){ alert('Data inválida. Use DD/MM/AAAA'); return }
+
+      const notes = loadNotes();
+      const existingIndex = notes.findIndex(n=>n.id===id);
+      const payload = { id, danfe, cnpj, company, date, value, desc };
+      if(existingIndex>=0) notes[existingIndex] = payload; else notes.push(payload);
+      saveNotes(notes);
+      renderTable();
+      closeForm();
+    });
+
+    // Render table
+    function renderTable(){
+      const tbody = document.querySelector('#notesTable tbody'); tbody.innerHTML='';
+      let notes = loadNotes();
+
+      // Apply search filters
+      const qDanfe = $('searchDanfe').value.trim().toLowerCase();
+      const qDate = $('searchDate').value.trim();
+      if(qDanfe) notes = notes.filter(n=>n.danfe.toLowerCase().includes(qDanfe));
+      if(qDate) notes = notes.filter(n=>n.date.includes(qDate));
+
+      // Apply sort
+      const sort = $('sortSelect').value;
+      if(sort==='company_asc') notes.sort((a,b)=>a.company.localeCompare(b.company));
+      else if(sort==='company_desc') notes.sort((a,b)=>b.company.localeCompare(a.company));
+      else if(sort==='date_new') notes.sort((a,b)=> formatForSort(b.date) - formatForSort(a.date));
+      else if(sort==='date_old') notes.sort((a,b)=> formatForSort(a.date) - formatForSort(b.date));
+
+      notes.forEach(n=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="align-middle"><strong>${escapeHtml(n.danfe)}</strong></td>
+          <td class="align-middle">${escapeHtml(n.company)}</td>
+          <td class="align-middle">${escapeHtml(n.date)}</td>
+          <td class="align-middle">R$ ${escapeHtml(n.value)}</td>
+          <td class="align-middle">${escapeHtml(n.desc)}</td>
+          <td class="align-middle">
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" data-action="view" data-id="${n.id}">Ver</button>
+              <button class="btn btn-sm btn-primary" data-action="edit" data-id="${n.id}">Editar</button>
+              <button class="btn btn-sm btn-danger" data-action="del" data-id="${n.id}">Excluir</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      $('totalCount').innerText = notes.length;
+    }
+
+    // Helpers
+    function formatForSort(d){
+      const parts = d.split('/'); return (+parts[2]||0)*10000 + (+parts[1]||0)*100 + (+parts[0]||0);
+    }
+    function escapeHtml(s){ if(!s) return ''; return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    // Table action delegation
+    document.querySelector('#notesTable tbody').addEventListener('click', (ev)=>{
+      const btn = ev.target.closest('button'); if(!btn) return;
+      const id = btn.dataset.id; const action = btn.dataset.action;
+      const notes = loadNotes(); const note = notes.find(n=>n.id===id);
+      if(action==='view'){ openForm(note); $('noteForm').querySelectorAll('input,textarea').forEach(i=>i.disabled=true); $('formTitle').innerText='Visualizar Nota'; }
+      else if(action==='edit'){ openForm(note); $('noteForm').querySelectorAll('input,textarea').forEach(i=>i.disabled=false); }
+      else if(action==='del'){ if(confirm('Excluir esta nota?')){ const idx = notes.findIndex(n=>n.id===id); notes.splice(idx,1); saveNotes(notes); renderTable(); } }
+    });
+
+    // When closing the form while in view mode, re-enable inputs
+    btnCloseForm.addEventListener('click', ()=>{ $('noteForm').querySelectorAll('input,textarea').forEach(i=>i.disabled=false); });
+
+    // Search & sort events
+    $('searchDanfe').addEventListener('input', renderTable);
+    $('searchDate').addEventListener('input', renderTable);
+    $('sortSelect').addEventListener('change', renderTable);
+
+    // Export to PDF using jsPDF
+    $('btnExportPDF').addEventListener('click', ()=>{
+      const notes = loadNotes(); if(notes.length===0){ alert('Nenhuma nota para exportar'); return }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit:'pt', format:'a4' });
+      const margin = 40; let y = 40;
+      doc.setFontSize(14); doc.text('Lista de Notas Fiscais', margin, y); y+=20;
+      doc.setFontSize(10);
+      const headers = ['DANFE','EMPRESA','DATA','VALOR','DESCRIÇÃO'];
+      const rows = notes.map(n=>[n.danfe, n.company, n.date, 'R$ '+n.value, n.desc]);
+
+      // Simple table renderer
+      const colWidths = [80,160,60,60,160];
+      const lineHeight = 14;
+      y+=10;
+      // header
+      let x = margin;
+      doc.setFont(undefined,'bold');
+      headers.forEach((h,i)=>{ doc.text(h, x+2, y); x+=colWidths[i]; });
+      y+=lineHeight; doc.setFont(undefined,'normal');
+      rows.forEach(r=>{
+        x = margin;
+        if(y>doc.internal.pageSize.height-60){ doc.addPage(); y=40; }
+        r.forEach((c,i)=>{ const txt = String(c).substring(0,40); doc.text(txt, x+2, y); x+=colWidths[i]; });
+        y+=lineHeight;
+      });
+
+      doc.save('notas_export.pdf');
+    });
+
+    // Initialize render on load
+    renderTable();
+
+    // load any saved data from previous session quietly
+    window.addEventListener('load', ()=>{ /* no-op */ });
+
+    // Accessibility: enter key on password input
+    $('accessKey').addEventListener('keydown', (e)=>{ if(e.key==='Enter') btnLogin.click(); });
+
+    // initial example data helper (only if empty) - commented out by default
+    (function seedIfEmpty(){
+      const notes = loadNotes(); if(notes.length===0){ /* leave empty to let user add */ }
+    })();
+
+  </script>
+</body>
+</html>
